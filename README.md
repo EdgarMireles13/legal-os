@@ -1,92 +1,323 @@
-# LEGAL-OS
+# Google Antigravity SDK
 
-Sistema operativo jurídico modular enfocado en el ecosistema legal mexicano. Diseñado para estructurar conocimiento normativo, automatizar flujos legales y habilitar el desarrollo de aplicaciones jurídicas sobre una base estandarizada.
+The Google Antigravity SDK is a Python SDK for building AI agents powered by
+Antigravity and Gemini. It provides a secure, scalable, and stateful
+infrastructure layer that abstracts the agentic loop, letting you focus on what
+your agent *does* rather than how it runs.
 
----
+## Installation
 
-## 🧩 Arquitectura
-
-El repositorio se organiza en módulos desacoplados con responsabilidades claras:
-
-### Estructura de Directorios
-
-```
-legal-os/
-├── docs/                    # Documentación funcional, técnica y de arquitectura
-├── knowledge/               # Base de conocimiento jurídico estructurado
-├── apps/                    # Aplicaciones construidas sobre LEGAL-OS
-├── templates/               # Plantillas reutilizables de documentos legales
-├── services/                # Servicios backend (APIs, reglas, motores)
-├── scripts/                 # Automatizaciones, ETL jurídico, parsers
-├── tests/                   # Pruebas de consistencia y validación
-├── checklists/              # Guías de redacción y validación jurídica
-└── infrastructure/          # Configuración de despliegue y CI/CD
+```sh
+pip install google-antigravity
 ```
 
----
+> [!IMPORTANT]
+> The Google Antigravity SDK relies on a compiled runtime binary that is
+> included in the platform-specific wheels published to
+> [PyPI](https://pypi.org/project/google-antigravity/). **Cloning this
+> repository alone is not sufficient to run the SDK.** Always install from
+> PyPI with `pip install google-antigravity` to obtain the binary.
 
-## ⚙️ Principios de Diseño
+## Quickstart
 
-- **Modularidad:** Componentes independientes e interoperables
-- **Estandarización:** Modelos de datos jurídicos consistentes
-- **Escalabilidad:** Preparado para evolución hacia motores legales complejos
-- **Auditabilidad:** Trazabilidad de reglas, fuentes y decisiones
-- **Automatización:** Reducción de carga operativa legal repetitiva
+Get started by running one of the [`examples/`](examples/), such as the
+`hello_world` example with:
 
----
+```sh
+export GEMINI_API_KEY="your_api_key_here"
+python ./examples/getting_started/hello_world.py
+```
+## Gemini Enterprise Agent Platform (formerly Vertex AI)
 
-## 🚀 Roadmap
+To use the SDK with Gemini Enterprise Agent Platform (formerly Vertex AI),
+configure `LocalAgentConfig` with `vertex=True` and specify your GCP `project`
+and `location`.
 
-### **v1 — MVP (2026)**
-- Estructura base del sistema
-- Repositorio de conocimiento jurídico inicial
-- Plantillas legales funcionales
-- API básica de evaluación
-- Integración con mireles-docs
-- **Checklists de redacción jurídica**
+By default, the SDK uses Application Default Credentials (ADC) for
+authentication.
 
-### **v2 — Motor Jurídico (2027)**
-- Motor de reglas legales (rule engine)
-- Inferencia jurídica automatizada
-- Validación normativa dinámica
-- Integración con bases de datos legales externas
+```python
+from google.antigravity import Agent, LocalAgentConfig
 
-### **v3 — Plataforma Completa (2028)**
-- Ecosistema de aplicaciones interoperables
-- API jurídica estandarizada
-- Interfaz de usuario avanzada
-- Capacidades de análisis y predicción
+config = LocalAgentConfig(
+    vertex=True,
+    project="your-gcp-project",
+    location="us-central1",
+)
 
----
+async with Agent(config) as agent:
+    response = await agent.chat("Hello!")
+    print(await response.text())
+```
 
-## 🤝 Integración con mireles-docs
+Alternatively, you can leave these fields unset in `LocalAgentConfig` and
+export the environment variables instead:
 
-LEGAL-OS actúa como **backend especializado** para el generador de documentos:
+```sh
+# Either GOOGLE_GENAI_USE_VERTEXAI or GOOGLE_GENAI_USE_ENTERPRISE enable Vertex.
+export GOOGLE_GENAI_USE_VERTEXAI=True
+export GOOGLE_CLOUD_PROJECT="your-gcp-project"
+export GOOGLE_CLOUD_LOCATION="us-central1"
+```
 
-- **mireles-docs** (frontend) → React + Vite
-- **legal-os** (backend) → APIs, reglas, plantillas, conocimiento
+Explicit kwargs always take precedence over env vars.
 
-Ver [docs/INTEGRATION.md](./docs/INTEGRATION.md) para detalles técnicos.
+Ensure you have authenticated locally before running the agent:
 
----
+```sh
+gcloud auth application-default login
+```
 
-## 📋 Checklists de Redacción Jurídica
+## Concepts
 
-Herramientas de validación y mejora para litigantes mexicanos:
+### Simple Agent
 
-- [Checklist de Demanda Laboral](./checklists/demanda_laboral_checklist.md)
-- [Checklist de Escrito de Queja](./checklists/escrito_queja_checklist.md)
-- [Guía de Redacción de Élite](./checklists/guia_redaccion_elite.md)
-- [Validador de Argumentos Jurídicos](./checklists/validador_argumentos.md)
+The `Agent` class is the easiest way to get started. It manages the full
+lifecycle — binary discovery, tool wiring, hook registration, and policy
+defaults — behind a single async context manager.
 
----
+The `system_instructions` parameter is optional.
 
-## 📄 Licencia
+```python
+import asyncio
+from google.antigravity import Agent, LocalAgentConfig
 
-Por definir.
+async def main():
+    config = LocalAgentConfig(
+        system_instructions="You are an expert assistant for codebase navigation.",
+        # api_key="your_api_key_here",
+    )
+    async with Agent(config) as agent:
+        response = await agent.chat("What files are in the current directory?")
+        print(await response.text())
 
----
+async def run():
+    await main()
 
-## 🤝 Contribuciones
+if __name__ == "__main__":
+    asyncio.run(run())
+```
 
-Las contribuciones deberán alinearse con los principios de diseño y mantener consistencia en modelos jurídicos y estructuras modulares.
+### Streaming Responses
+
+To stream agent output in real-time (e.g., for fluid UI or console applications), simply iterate over the `ChatResponse` object using an `async for` loop. The stream wrapper natively yields conversational `str` text tokens as they arrive, with zero network overhead:
+
+```python
+import asyncio
+import sys
+from google.antigravity import Agent, LocalAgentConfig
+
+async def main():
+    config = LocalAgentConfig()
+    async with Agent(config) as agent:
+        # Returns instantly — does not block
+        response = await agent.chat("Write a short poem about space.")
+        
+        async for token in response:
+            sys.stdout.write(token)
+            sys.stdout.flush()
+        print()
+
+asyncio.run(main())
+```
+
+### Sugared Thoughts & Tool Call Streams (Advanced)
+
+For more complex use cases, you can also stream internal model reasoning/thinking or intercept tool call dispatches in real-time using dedicated async stream properties:
+
+```python
+# 1. Stream reasoning/thinking deltas
+async for thought in response.thoughts:
+    show_thinking_bubble(thought)
+
+# 2. Stream strongly-typed ToolCall events
+async for call in response.tool_calls:
+    show_executing_spinner(call.name)
+```
+
+By default, `Agent` runs in **read-only mode** for safety. Pass
+`capabilities=CapabilitiesConfig()` to enable all tools (including writes).
+
+### Interactive Loop
+
+```python
+from google.antigravity import LocalAgentConfig, CapabilitiesConfig
+from google.antigravity.utils.interactive import run_interactive_loop
+
+config = LocalAgentConfig(
+    # api_key="your_api_key_here",
+    capabilities=CapabilitiesConfig(),
+)
+await run_interactive_loop(config)
+```
+
+### Advanced Usage with Conversation
+
+For full control over the connection lifecycle, use `Conversation` with a
+`ConnectionStrategy` directly. `Conversation` is a stateful session that
+accumulates step history, provides a `chat()` convenience method, and exposes
+state introspection:
+
+```python
+import asyncio
+from google.antigravity.connections.local import LocalConnectionStrategy
+from google.antigravity.conversation.conversation import Conversation
+from google.antigravity.tools.tool_runner import ToolRunner
+
+async def main():
+    tool_runner = ToolRunner()
+    strategy = LocalConnectionStrategy(
+        tool_runner=tool_runner,
+    )
+    
+    async with Conversation.create(strategy) as conversation:
+        # High-level: one-call send + collect
+        response = await conversation.chat("What files are here?")
+        print(await response.text())
+        
+        # Step history accumulates automatically
+        print(f"Total steps: {len(conversation.history)}")
+        print(f"Turns: {conversation.turn_count}")
+        print(f"Last response: {conversation.last_response}")
+        
+        # Low-level: streaming steps
+        await conversation.send("Tell me more.")
+        async for step in conversation.receive_steps():
+            if step.is_complete_response:
+                print(step.content)
+
+asyncio.run(main())
+```
+
+## Features
+
+### Multimodal Ingestion
+
+Pass rich multimedia file attachments (images, videos, audio, and documents) to the agent alongside textual instruction prompt lists.
+
+You can attach assets **directly using content classes** (perfect for in-memory bytes) or **conveniently from a filesystem path** (which automatically resolves types and guesses MIME formats):
+
+```python
+from google.antigravity import Agent, LocalAgentConfig
+from google.antigravity.types import Image, from_file
+
+config = LocalAgentConfig(system_instructions="You are an expert software architect.")
+async with Agent(config) as agent:
+    # 1. Flat filesystem shortcut (automatically resolves as types.Document)
+    pdf_spec = from_file("spec.pdf")
+    
+    # 2. Direct constructor instantiation (perfect for in-memory raw bytes)
+    chart_image = Image(
+        data=b"raw_png_bytes_here", 
+        mime_type="image/png", 
+        description="Architecture blueprint"
+    )
+    
+    # Send a mixed list of text instructions and content classes
+    prompt = [
+        "Analyze this chart against the specification and list three security vulnerabilities:",
+        chart_image,
+        pdf_spec
+    ]
+    response = await agent.chat(prompt)
+    print(await response.text())
+```
+
+### Custom Tools
+
+Register Python functions as tools that the agent can call:
+
+```python
+def get_weather(city: str) -> str:
+    """Returns the current weather for a city."""
+    return f"It's sunny in {city}."
+
+config = LocalAgentConfig(
+    tools=[get_weather],
+)
+async with Agent(config) as agent:
+    response = await agent.chat("What's the weather in Tokyo?")
+```
+
+### MCP Integration
+
+Connect to external [MCP](https://modelcontextprotocol.io/) servers and expose
+their tools to the agent:
+
+```python
+from google.antigravity import Agent, LocalAgentConfig
+from google.antigravity.types import McpStdioServer
+
+config = LocalAgentConfig(
+    mcp_servers=[McpStdioServer(name="my_server", command="npx", args=["my-mcp-server"])],
+)
+async with Agent(config) as agent:
+    response = await agent.chat("Use the MCP tools to help me.")
+```
+
+### Hooks and Policies
+
+Control agent behavior with a declarative policy system:
+
+```python
+from google.antigravity import LocalAgentConfig, CapabilitiesConfig
+from google.antigravity.hooks.policy import deny, allow, ask_user, enforce
+from google.antigravity.utils.interactive import run_interactive_loop
+
+policies = [
+    deny("*"),                          # Block all tools by default
+    allow("view_file"),                 # Allow reading files
+    ask_user("run_command", handler=my_handler),  # Ask before running commands
+]
+
+config = LocalAgentConfig(
+    capabilities=CapabilitiesConfig(),
+    policies=policies,
+)
+await run_interactive_loop(config)
+```
+
+### Triggers
+
+Run background tasks that react to external events and push messages into the
+agent:
+
+```python
+from google.antigravity import LocalAgentConfig
+from google.antigravity.triggers import every
+from google.antigravity.utils.interactive import run_interactive_loop
+
+async def check_status(ctx):
+    await ctx.send("Check the deployment status.")
+
+config = LocalAgentConfig(
+    triggers=[every(60, check_status)],
+)
+await run_interactive_loop(config)
+```
+
+## Architecture
+
+The SDK follows a three-layer architecture:
+
+| Layer | Purpose | Key Classes |
+|:------|:--------|:------------|
+| **Layer 1** — Simplified | High-level, batteries-included entry point | `Agent` |
+| **Layer 2** — Session | Stateful session with history and convenience methods | `Conversation`, `ChatResponse`, `Step`, `ToolCall`, `AgentConfig`, `HookRunner`, `ToolRunner`, `TriggerRunner` |
+| **Layer 3** — Adapter | Transport and backend abstraction | `Connection`, `ConnectionStrategy`, `LocalConnection` |
+
+## Component Documentation
+
+For more detailed documentation on specific components, see:
+
+-   [Agent](google/antigravity/agent.py) — High-level, batteries-included entry point.
+-   [Connections](google/antigravity/connections/README.md) — Transport and backend abstraction.
+-   [Conversation](google/antigravity/conversation/README.md) — Stateful session management.
+-   [Hooks](google/antigravity/hooks/README.md) — Agent lifecycle interception and policies.
+-   [MCP](google/antigravity/mcp/README.md) — Model Context Protocol integration.
+-   [Tools](google/antigravity/tools/README.md) — In-process tool execution.
+-   [Triggers](google/antigravity/triggers/README.md) — Background tasks and external events.
+
+## License
+
+[Apache License 2.0](LICENSE)
